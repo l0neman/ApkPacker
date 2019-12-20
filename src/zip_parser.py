@@ -2,6 +2,7 @@ import struct
 import os
 
 EndLocatorMagic = 0x06054b50
+ApkSignBlockMagic = "APK Sig Block 42"
 ApkSignBlock42 = 0x7109871a
 
 """
@@ -39,13 +40,12 @@ def parse_end_locator(file_path):
                 elDirectoryOffset, \
                 elCommentLen = struct.unpack('<IHHHHIIH', f.read(3 * 4 + 5 * 2))
                 print("中央目录偏移：%d" % elDirectoryOffset)
+                print(bytearray(ApkSignBlockMagic, encoding="utf8"))
 
                 for j in range(elDirectoryOffset, 0, -1):
                     f.seek(j)
-                    int_buf = f.read(16)
-                    # if from_bytes == ApkSignBlock42:
-                    #     print("APK 签名分块 42 偏移 %d" % j)
-                    #     return
+                    str_buf = f.read(16)
+                    print(str_buf.decode("ascii", errors="ignore"))
 
 
 if __name__ == "__main__":
