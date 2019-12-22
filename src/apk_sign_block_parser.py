@@ -52,12 +52,12 @@ def parse_apk_sign_block_offset(file, zip_central_offset):
     for i in range(zip_central_offset - 16, 0, -1):
         file.seek(i)
         magic_buf = file.read(16)
-        # 寻找 APK 分块。
+        # find APK Sign Block。
         if magic_buf == bytes(ApkSignBlockMagic, encoding='utf8'):
             print('sign block magic offset：%d' % i)
             print('sign block magic hex: %s' % magic_buf.hex())
 
-            # 向上偏移 block size（uint64）类型大小.
+            # move block size（uint64）type size up.
             bottom_block_size_offset = i - 8
             file.seek(bottom_block_size_offset)
 
@@ -137,7 +137,7 @@ def parse_sign_block_v2(file, sign_block_v2_offset):
     signer_queue_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
     print('signer queue length: %d\n' % signer_queue_length)
 
-    # move signer queue size (uint32) length forward。
+    # move signer queue length (uint32) type size forward。
     signer_offset = signer_offset + 4
     signer_queue_limit = sign_block_v2_offset + 4 + signer_queue_length
     signer_count = 0
@@ -150,23 +150,26 @@ def parse_sign_block_v2(file, sign_block_v2_offset):
         signer_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
         print('signer %d length: %d\n' % (signer_count, signer_length))
 
-        # move signer length (uint32) forward.
+        # move signer length (uint32) type size forward.
         signer_offset = signer_offset + 4
 
         # 1. parse signed data.
         signed_data_size = int.from_bytes(file.read(4), byteorder='little', signed=False)
         print('signed data %d length: %d' % (signer_count, signed_data_size))
 
-        # move signed data length (uint32) forward.
+        # move signed data length (uint32) type size forward.
         signer_offset = signer_offset + 4
         # jump to signatures queue offset.
         signer_offset = signer_offset + signed_data_size
 
         # 1-1. parse digests.
+        # ignore.
 
         # 1-2. parse certificates.
+        # ignore.
 
         # 1-3. parse additional attributes.
+        # ignore.
 
         # 2. parse signatures.
         file.seek(signer_offset)
@@ -174,7 +177,7 @@ def parse_sign_block_v2(file, sign_block_v2_offset):
         signatures_queue_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
         print('signatures queue %d length: %d\n' % (signer_count, signatures_queue_length))
 
-        # move signatures queue length (uint32) forward.
+        # move signatures queue length (uint32) type size forward.
         signer_offset = signer_offset + 4
 
         signature_offset = signer_offset
@@ -189,7 +192,7 @@ def parse_sign_block_v2(file, sign_block_v2_offset):
             signature_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
             print('signature %d length: %d' % (signer_count, signature_length))
 
-            # move signature length (uint32) forward.
+            # move signature length (uint32) type size forward.
             signature_offset = signature_offset + 4
             # jump to next signature offset.
             signature_offset = signature_offset + signature_length
@@ -203,15 +206,13 @@ def parse_sign_block_v2(file, sign_block_v2_offset):
         # jump to public key offset.
         signer_offset = signer_offset + signatures_queue_length
 
-        # move certificates queue length (uint32) forwards.
-
         # 3. parse public key.
         file.seek(signer_offset)
 
         public_key_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
         print('public key %d length: %d\n' % (signer_count, public_key_length))
 
-        # move public key length(uint32) forward.
+        # move public key length (uint32) type size forward.
         signer_offset = signer_offset + 4
         # jump to next signer.
         signer_offset = signer_offset + public_key_length
@@ -227,13 +228,13 @@ def parse_sign_block_pairs(file, sign_block_offset):
     block_size = int.from_bytes(block_size_buf, byteorder='little', signed=False)
     print('top sign block size：%d' % block_size)
 
-    # 移动 top block size（uint64）类型的大小。
+    # move top block size（uint64）type size forward。
     pairs_offset = sign_block_offset + 8
 
     length = int.from_bytes(file.read(8), byteorder='little', signed=False)
     print('id-value pairs queue size：%d' % length)
 
-    # 移动 pairs size（uint64）类型的大小。
+    # move pairs size (uint64) type size forward.
     offset = pairs_offset + 8
 
     pair_count = 0
@@ -242,9 +243,10 @@ def parse_sign_block_pairs(file, sign_block_offset):
 
     pairs_queue_limit = pairs_offset + length
 
+    # parse ID-value pairs.
     while offset < pairs_queue_limit:
         file.seek(offset)
-        # 遍历分块 ID-value 键值对。
+        # parse ID-value pair.
         print('id offset：%d' % offset)
 
         sig_id = int.from_bytes(file.read(4), byteorder='little', signed=False)
@@ -253,14 +255,14 @@ def parse_sign_block_pairs(file, sign_block_offset):
         signer_queue_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
         print('signer queue length: %d\n' % signer_queue_length)
 
-        # 偏移 ID（uint32）的类型大小。
+        # move ID (uint32) type size forward.
         parse_sign_block_v2(file, offset + 4)
 
         if signer_queue_length == 0:
             print('not other signer value.')
             return
 
-        # 跳到下一个 ID-value 键值对
+        # jump to next ID-value pair offset.
         offset = offset + 4 + signer_queue_length
         pair_count = pair_count + 1
 
@@ -282,7 +284,6 @@ def parse(file_path):
         print('apk sign block offset：%d\n' % sign_block_offset)
 
         parse_sign_block_pairs(f, sign_block_offset)
-
 
 if __name__ == '__main__':
     # parse_end_locator('../file/Tools.apk')
