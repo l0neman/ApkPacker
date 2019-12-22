@@ -1,5 +1,5 @@
-import struct
 import os
+import struct
 
 EndLocatorMagic = 0x06054b50
 ApkSignBlockMagic = "APK Sig Block 42"
@@ -250,7 +250,9 @@ def parse_sign_block_pairs(file, sign_block_offset):
         print('id offset：%d' % offset)
 
         sig_id = int.from_bytes(file.read(4), byteorder='little', signed=False)
-        print('sign ID %d：%x' % (pair_count, sig_id))
+        print('pair ID %d：%x' % (pair_count, sig_id))
+
+        # todo: print pair value.
 
         signer_queue_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
         print('signer queue length: %d\n' % signer_queue_length)
@@ -258,12 +260,8 @@ def parse_sign_block_pairs(file, sign_block_offset):
         # move ID (uint32) type size forward.
         parse_sign_block_v2(file, offset + 4)
 
-        if signer_queue_length == 0:
-            print('not other signer value.')
-            return
-
         # jump to next ID-value pair offset.
-        offset = offset + 4 + signer_queue_length
+        offset = offset + signer_queue_length
         pair_count = pair_count + 1
 
     return
@@ -285,7 +283,95 @@ def parse(file_path):
 
         parse_sign_block_pairs(f, sign_block_offset)
 
+
+def write_id_value_pair_internal(file, out_file, ids, values, sign_block_offset):
+    file.seek(sign_block_offset)
+    block_size_buf = file.read(8)
+    # todo: need update.
+    write_bytes_to_file(block_size_buf, out_file)
+
+    block_size = int.from_bytes(block_size_buf, byteorder='little', signed=False)
+    print('top sign block size：%d' % block_size)
+
+    # move top block size（uint64）type size forward。
+    pairs_offset = sign_block_offset + 8
+
+    pairs_queue_length_buf = file.read(8)
+    write_bytes_to_file(pairs_queue_length_buf, out_file)
+
+    pairs_queue_length = int.from_bytes(pairs_queue_length_buf, byteorder='little', signed=False)
+    print('id-value pairs queue size：%d' % pairs_queue_length)
+
+    # move pairs size (uint64) type size forward.
+    offset = pairs_offset + 8
+
+    pair_count = 0
+
+    print("\n====== APK Block Pairs ======\n")
+
+    pairs_queue_limit = pairs_offset + pairs_queue_length
+
+    # write original id-value pairs to apk sign block.
+    write_bytes_to_file(file.read(pairs_queue_length))
+
+    # write new id-value paris to apk sign block.
+    for i in range(len(ids)):
+        t_id = ids[i]
+        t_value = values[i]
+
+        # length - uint32 size + value string char size.
+        t_length = 4 + len(values[i])
+        # 1. write id-value pair length.
+        write_bytes_to_file(int(t_length).to_bytes(4, byteorder='little', signed=False), out_file)
+        # 2. write id.
+        write_bytes_to_file(int(ids[i]).to_bytes(4, byteorder='little', signed=False), out_file)
+        # 3. write value.
+        write_bytes_to_file(bytes(values[i], encoding='utf8'), out_file)
+
+    # todo: update sign block size and write again.
+
+
+def copy_file(src_file, to_file, limit):
+    src_file.seek(0)
+    for _ in range(limit):
+        buffer = src_file.read(1)
+        if not buffer:
+            return
+        to_file.write(buffer)
+
+
+def write_bytes_to_file(buffer, to_file):
+    to_file.write(buffer)
+
+
+# 1. copy contents of ZIP entries to new apk.
+# 2. write new id-value pairs to apk sign block.
+# 3. copy modified (extends) APK Signing Block to new apk.
+# 4. copy modified (if possible: zip related info) Central Directory to new apk.
+# 5. copy modified (update offset info) End of Central Directory to new apk.
+def write_id_value_pairs(file_path, out_file_path, ids, values):
+    with open(file_path, 'rb') as f:
+        with open(out_file_path, 'ab') as out:
+            zip_central_offset = parse_zip_central_offset(f, file_path)
+            if zip_central_offset == -1:
+                raise Exception('parse zip central directory.')
+
+            print('zip central offset：%d\n' % zip_central_offset)
+
+            sign_block_offset = parse_apk_sign_block_offset(f, zip_central_offset)
+            if sign_block_offset == -1:
+                raise Exception('parse apk sign block error.')
+
+            print('apk sign block offset：%d\n' % sign_block_offset)
+
+            copy_file(f, out, sign_block_offset)
+
+            # parse_sign_block_pairs(f, sign_block_offset)
+            write_id_value_pair_internal(f, out, ids, values)
+
+
 if __name__ == '__main__':
     # parse_end_locator('../file/Tools.apk')
     parse('../file/Tools.apk')
+    # write_id_value_pairs('../file/Tools.apk', '../file/ToolsNew.apk', [0x11111111], ['I am fine.'])
     print('read ok.')
