@@ -25,7 +25,7 @@ def print_time():
 
 def start_pack_apk():
     def callback(name, channel):
-        app_name = get_apk_name(name, )
+        pass
 
     read_file_lines(ChannelFilePath, callback)
 
