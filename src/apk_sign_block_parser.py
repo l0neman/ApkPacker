@@ -3,36 +3,8 @@ import struct
 
 EndLocatorMagic = 0x06054b50
 ApkSignBlockMagic = "APK Sig Block 42"
-ApkSignBlock42ID = 0x7109871a
-
-
-def parse_zip_central_offset(file, file_path):
-    """
-    struct EndLocator
-    {
-        ui32 signature;             // 目录结束标记,(固定值0x06054b50)。
-        ui16 elDiskNumber;          // 当前磁盘编号。
-        ui16 elStartDiskNumber;     // 中央目录开始位置的磁盘编号。
-        ui16 elEntriesOnDisk;       // 该磁盘上所记录的核心目录数量。
-        ui16 elEntriesInDirectory;  // 中央目录结构总数。
-        ui32 elDirectorySize;       // 中央目录的大小。
-        ui32 elDirectoryOffset;     // 中央目录开始位置相对于文件头的偏移。
-        ui16 elCommentLen;          // 注释长度。
-        char *elComment;            // 注释内容。
-    };
-    """
-    file_size = os.path.getsize(file_path)
-    print('apk file size: %d' % file_size)
-    for i in range(file_size):
-        file.seek(i)
-        magic_buf = file.read(4)
-        # 寻找中央目录分块。
-        if int.from_bytes(magic_buf, byteorder='little', signed=False) == EndLocatorMagic:
-            file.seek(i)
-            _1, _2, _3, _4, _5, _6, el_directory_offset, _8 = struct.unpack('<IHHHHIIH', file.read(3 * 4 + 5 * 2))
-            return el_directory_offset
-
-    return -1
+ApkSignBlockV2ID = 0x7109871a
+ApkSignBlockV3ID = 0xf05368c0
 
 
 def parse_apk_sign_block_offset(file, zip_central_offset):
@@ -68,11 +40,77 @@ def parse_apk_sign_block_offset(file, zip_central_offset):
 
             # 顶部 block size 的偏移（即 sign block offset）。
             # 向上偏移整个块大小除去 magic（16 bytes）和一个 bottom block size （uint64）的类型大小
-            # 再向上偏移一个 top block size（uint64）的类型大小。
-            top_block_size_offset = bottom_block_size_offset - (block_size - 16 - 8) - 8
+            top_block_size_offset = bottom_block_size_offset - (block_size - 16)
             return top_block_size_offset
 
     return -1
+
+
+def parse_sign_block_pairs(file, sign_block_offset):
+    file.seek(sign_block_offset)
+    block_size_buf = file.read(8)
+
+    block_size = int.from_bytes(block_size_buf, byteorder='little', signed=False)
+    print('top sign block size：%d' % block_size)
+
+    # move top block size（uint64）type size forward。
+    pairs_queue_offset = sign_block_offset + 8
+
+    pairs_queue_length = int.from_bytes(file.read(8), byteorder='little', signed=False)
+    print('id-value pairs queue size：%d' % pairs_queue_length)
+
+    # move pairs size (uint64) type size forward.
+    pairs_queue_content_offset = pairs_queue_offset + 8
+    pairs_queue_content_limit = pairs_queue_content_offset + pairs_queue_length
+    pair_count = 0
+
+    print("\n====== APK Block Pairs ======\n")
+
+    # parse ID-value pairs.
+    while pairs_queue_content_offset < pairs_queue_content_limit:
+        file.seek(pairs_queue_content_offset)
+        print('----- pair %d content -----\n' % pair_count)
+        # parse ID-value pair.
+        print('id offset：%d' % pairs_queue_content_offset)
+
+        sig_id = int.from_bytes(file.read(4), byteorder='little', signed=False)
+        print('pair ID %d：0x%x' % (pair_count, sig_id))
+
+        signer_queue_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
+        print('signer queue length: %d\n' % signer_queue_length)
+
+        # move ID (uint32) type size forward.
+        pairs_queue_content_offset = pairs_queue_content_offset + 4
+
+        if sig_id == ApkSignBlockV2ID:
+            signer_queue_length = parse_sign_block_v2(file, pairs_queue_content_offset)
+        elif sig_id == ApkSignBlockV3ID:
+            signer_queue_length = parse_sign_block_v3(file, pairs_queue_content_offset)
+        else:
+            signer_queue_length = parse_not_sign_block_value_length(file, pairs_queue_content_offset)
+
+        if not sig_id == ApkSignBlockV2ID:
+            file.seek(pairs_queue_content_offset + 4)
+            print('pair value: %s' % file.read(signer_queue_length).decode(encoding='utf8', errors='ignore'))
+
+        # jump to next ID-value pair offset, 4 is [APK Sign V2 Block] length.
+        pairs_queue_content_offset = pairs_queue_content_offset + 4 + signer_queue_length
+        pair_count = pair_count + 1
+
+
+def parse_not_sign_block_value_length(file, not_sign_block_v2_offset):
+    print('no sign block v2 offset: %d' % not_sign_block_v2_offset)
+    file.seek(not_sign_block_v2_offset)
+
+    value_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
+    print('value length: %d\n' % value_length)
+
+    return value_length
+
+
+# todo: parse v2 structure.
+def parse_sign_block_v3(file, sign_block_v2_offset):
+    raise AssertionError("not implementation.")
 
 
 def parse_sign_block_v2(file, sign_block_v2_offset):
@@ -131,36 +169,36 @@ def parse_sign_block_v2(file, sign_block_v2_offset):
     }
     """
     print('sign block v2 offset: %d' % sign_block_v2_offset)
-    signer_offset = sign_block_v2_offset
-    file.seek(signer_offset)
+    signer_queue_offset = sign_block_v2_offset
+    file.seek(signer_queue_offset)
 
     signer_queue_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
     print('signer queue length: %d\n' % signer_queue_length)
 
     # move signer queue length (uint32) type size forward。
-    signer_offset = signer_offset + 4
+    signer_queue_offset = signer_queue_offset + 4
     signer_queue_limit = sign_block_v2_offset + 4 + signer_queue_length
     signer_count = 0
 
     # parse signer queue:
-    while signer_offset < signer_queue_limit:
-        file.seek(signer_offset)
+    while signer_queue_offset < signer_queue_limit:
+        file.seek(signer_queue_offset)
 
         # parse signer:
         signer_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
-        print('signer %d length: %d\n' % (signer_count, signer_length))
+        print('signer %d length: %d' % (signer_count, signer_length))
 
         # move signer length (uint32) type size forward.
-        signer_offset = signer_offset + 4
+        signer_queue_offset = signer_queue_offset + 4
 
         # 1. parse signed data.
         signed_data_size = int.from_bytes(file.read(4), byteorder='little', signed=False)
         print('signed data %d length: %d' % (signer_count, signed_data_size))
 
         # move signed data length (uint32) type size forward.
-        signer_offset = signer_offset + 4
+        signer_queue_offset = signer_queue_offset + 4
         # jump to signatures queue offset.
-        signer_offset = signer_offset + signed_data_size
+        signer_queue_offset = signer_queue_offset + signed_data_size
 
         # 1-1. parse digests.
         # ignore.
@@ -172,16 +210,16 @@ def parse_sign_block_v2(file, sign_block_v2_offset):
         # ignore.
 
         # 2. parse signatures.
-        file.seek(signer_offset)
+        file.seek(signer_queue_offset)
 
         signatures_queue_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
         print('signatures queue %d length: %d\n' % (signer_count, signatures_queue_length))
 
         # move signatures queue length (uint32) type size forward.
-        signer_offset = signer_offset + 4
+        signer_queue_offset = signer_queue_offset + 4
 
-        signature_offset = signer_offset
-        signatures_queue_limit = signer_offset + signatures_queue_length
+        signature_offset = signer_queue_offset
+        signatures_queue_limit = signer_queue_offset + signatures_queue_length
         signature_count = 0
 
         # parse signatures queue.
@@ -199,77 +237,63 @@ def parse_sign_block_v2(file, sign_block_v2_offset):
 
             # parse signature algorithm ID.
             signature_algorithm_id = int.from_bytes(file.read(4), byteorder='little', signed=False)
-            print('signature algorithm ID %d: %x' % (signature_count, signature_algorithm_id))
+            print('signature algorithm ID %d: 0x%x\n' % (signature_count, signature_algorithm_id))
 
             signature_count = signature_count + 1
 
         # jump to public key offset.
-        signer_offset = signer_offset + signatures_queue_length
+        signer_queue_offset = signer_queue_offset + signatures_queue_length
 
         # 3. parse public key.
-        file.seek(signer_offset)
+        file.seek(signer_queue_offset)
 
         public_key_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
         print('public key %d length: %d\n' % (signer_count, public_key_length))
 
         # move public key length (uint32) type size forward.
-        signer_offset = signer_offset + 4
+        signer_queue_offset = signer_queue_offset + 4
         # jump to next signer.
-        signer_offset = signer_offset + public_key_length
+        signer_queue_offset = signer_queue_offset + public_key_length
 
         # ignore parse public key content.
 
         signer_count = signer_count + 1
 
+    return signer_queue_length
 
-def parse_sign_block_pairs(file, sign_block_offset):
-    file.seek(sign_block_offset)
-    block_size_buf = file.read(8)
-    block_size = int.from_bytes(block_size_buf, byteorder='little', signed=False)
-    print('top sign block size：%d' % block_size)
 
-    # move top block size（uint64）type size forward。
-    pairs_offset = sign_block_offset + 8
+def parse_zip_central_offset(file, file_path):
+    """
+    struct EndLocator
+    {
+        ui32 signature;             // 目录结束标记,(固定值0x06054b50)。
+        ui16 elDiskNumber;          // 当前磁盘编号。
+        ui16 elStartDiskNumber;     // 中央目录开始位置的磁盘编号。
+        ui16 elEntriesOnDisk;       // 该磁盘上所记录的核心目录数量。
+        ui16 elEntriesInDirectory;  // 中央目录结构总数。
+        ui32 elDirectorySize;       // 中央目录的大小。
+        ui32 elDirectoryOffset;     // 中央目录开始位置相对于文件头的偏移。
+        ui16 elCommentLen;          // 注释长度。
+        char *elComment;            // 注释内容。
+    };
+    """
+    file_size = os.path.getsize(file_path)
+    print('apk file size: %d' % file_size)
+    for i in range(file_size):
+        file.seek(i)
+        magic_buf = file.read(4)
+        # 寻找中央目录分块。
+        if int.from_bytes(magic_buf, byteorder='little', signed=False) == EndLocatorMagic:
+            file.seek(i)
+            _1, _2, _3, _4, _5, _6, el_directory_offset, _8 = struct.unpack('<IHHHHIIH', file.read(3 * 4 + 5 * 2))
+            return el_directory_offset, i
 
-    length = int.from_bytes(file.read(8), byteorder='little', signed=False)
-    print('id-value pairs queue size：%d' % length)
-
-    # move pairs size (uint64) type size forward.
-    offset = pairs_offset + 8
-
-    pair_count = 0
-
-    print("\n====== APK Block Pairs ======\n")
-
-    pairs_queue_limit = pairs_offset + length
-
-    # parse ID-value pairs.
-    while offset < pairs_queue_limit:
-        file.seek(offset)
-        # parse ID-value pair.
-        print('id offset：%d' % offset)
-
-        sig_id = int.from_bytes(file.read(4), byteorder='little', signed=False)
-        print('pair ID %d：%x' % (pair_count, sig_id))
-
-        # todo: print pair value.
-
-        signer_queue_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
-        print('signer queue length: %d\n' % signer_queue_length)
-
-        # move ID (uint32) type size forward.
-        parse_sign_block_v2(file, offset + 4)
-
-        # jump to next ID-value pair offset.
-        offset = offset + signer_queue_length
-        pair_count = pair_count + 1
-
-    return
+    return -1, -1
 
 
 def parse(file_path):
     with open(file_path, 'rb') as f:
-        zip_central_offset = parse_zip_central_offset(f, file_path)
+        zip_central_offset, _ = parse_zip_central_offset(f, file_path)
         if zip_central_offset == -1:
             raise Exception('parse zip central directory.')
 
@@ -284,94 +308,6 @@ def parse(file_path):
         parse_sign_block_pairs(f, sign_block_offset)
 
 
-def write_id_value_pair_internal(file, out_file, ids, values, sign_block_offset):
-    file.seek(sign_block_offset)
-    block_size_buf = file.read(8)
-    # todo: need update.
-    write_bytes_to_file(block_size_buf, out_file)
-
-    block_size = int.from_bytes(block_size_buf, byteorder='little', signed=False)
-    print('top sign block size：%d' % block_size)
-
-    # move top block size（uint64）type size forward。
-    pairs_offset = sign_block_offset + 8
-
-    pairs_queue_length_buf = file.read(8)
-    write_bytes_to_file(pairs_queue_length_buf, out_file)
-
-    pairs_queue_length = int.from_bytes(pairs_queue_length_buf, byteorder='little', signed=False)
-    print('id-value pairs queue size：%d' % pairs_queue_length)
-
-    # move pairs size (uint64) type size forward.
-    offset = pairs_offset + 8
-
-    pair_count = 0
-
-    print("\n====== APK Block Pairs ======\n")
-
-    pairs_queue_limit = pairs_offset + pairs_queue_length
-
-    # write original id-value pairs to apk sign block.
-    write_bytes_to_file(file.read(pairs_queue_length))
-
-    # write new id-value paris to apk sign block.
-    for i in range(len(ids)):
-        t_id = ids[i]
-        t_value = values[i]
-
-        # length - uint32 size + value string char size.
-        t_length = 4 + len(values[i])
-        # 1. write id-value pair length.
-        write_bytes_to_file(int(t_length).to_bytes(4, byteorder='little', signed=False), out_file)
-        # 2. write id.
-        write_bytes_to_file(int(ids[i]).to_bytes(4, byteorder='little', signed=False), out_file)
-        # 3. write value.
-        write_bytes_to_file(bytes(values[i], encoding='utf8'), out_file)
-
-    # todo: update sign block size and write again.
-
-
-def copy_file(src_file, to_file, limit):
-    src_file.seek(0)
-    for _ in range(limit):
-        buffer = src_file.read(1)
-        if not buffer:
-            return
-        to_file.write(buffer)
-
-
-def write_bytes_to_file(buffer, to_file):
-    to_file.write(buffer)
-
-
-# 1. copy contents of ZIP entries to new apk.
-# 2. write new id-value pairs to apk sign block.
-# 3. copy modified (extends) APK Signing Block to new apk.
-# 4. copy modified (if possible: zip related info) Central Directory to new apk.
-# 5. copy modified (update offset info) End of Central Directory to new apk.
-def write_id_value_pairs(file_path, out_file_path, ids, values):
-    with open(file_path, 'rb') as f:
-        with open(out_file_path, 'ab') as out:
-            zip_central_offset = parse_zip_central_offset(f, file_path)
-            if zip_central_offset == -1:
-                raise Exception('parse zip central directory.')
-
-            print('zip central offset：%d\n' % zip_central_offset)
-
-            sign_block_offset = parse_apk_sign_block_offset(f, zip_central_offset)
-            if sign_block_offset == -1:
-                raise Exception('parse apk sign block error.')
-
-            print('apk sign block offset：%d\n' % sign_block_offset)
-
-            copy_file(f, out, sign_block_offset)
-
-            # parse_sign_block_pairs(f, sign_block_offset)
-            write_id_value_pair_internal(f, out, ids, values)
-
-
 if __name__ == '__main__':
-    # parse_end_locator('../file/Tools.apk')
     parse('../file/Tools.apk')
-    # write_id_value_pairs('../file/Tools.apk', '../file/ToolsNew.apk', [0x11111111], ['I am fine.'])
-    print('read ok.')
+    print('parse ok.')
