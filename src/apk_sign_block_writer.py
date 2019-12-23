@@ -32,7 +32,7 @@ def parse_zip_central_offset(file, file_path):
     """
     struct EndLocator
     {
-        ui32 signature;             // 目录结束标记,(固定值0x06054b50)。
+        ui32 signature;             // 目录结束标记（固定值 0x06054b50）。
         ui16 elDiskNumber;          // 当前磁盘编号。
         ui16 elStartDiskNumber;     // 中央目录开始位置的磁盘编号。
         ui16 elEntriesOnDisk;       // 该磁盘上所记录的核心目录数量。
@@ -222,6 +222,7 @@ def write_id_value_pairs(file_path, out_file_path, ids, values):
             write_zip_end_locator(f, os.path.getsize(file_path), out, zip_end_locator_offset, append_size)
 
 
+# test.
 if __name__ == '__main__':
     write_id_value_pairs('../file/Tools.apk', '../file/ToolsNew.apk', [0xaaaa, 0x1234],
                          ['I am fine.', 'you are beautiful.'])
