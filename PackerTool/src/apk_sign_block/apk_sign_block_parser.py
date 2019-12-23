@@ -7,7 +7,7 @@ ApkSignBlockV2ID = 0x7109871a
 ApkSignBlockV3ID = 0xf05368c0
 
 
-def parse_apk_sign_block_offset(file, zip_central_offset):
+def _parse_apk_sign_block_offset(file, zip_central_offset):
     """
     size of block - uint64
     length - uint64: [
@@ -46,7 +46,7 @@ def parse_apk_sign_block_offset(file, zip_central_offset):
     return -1
 
 
-def parse_sign_block_pairs(file, sign_block_offset):
+def _parse_sign_block_pairs(file, sign_block_offset):
     file.seek(sign_block_offset)
     block_size_buf = file.read(8)
 
@@ -83,11 +83,11 @@ def parse_sign_block_pairs(file, sign_block_offset):
         pairs_queue_content_offset = pairs_queue_content_offset + 4
 
         if sig_id == ApkSignBlockV2ID:
-            signer_queue_length = parse_sign_block_v2(file, pairs_queue_content_offset)
+            signer_queue_length = _parse_sign_block_v2(file, pairs_queue_content_offset)
         elif sig_id == ApkSignBlockV3ID:
-            signer_queue_length = parse_sign_block_v3(file, pairs_queue_content_offset)
+            signer_queue_length = _parse_sign_block_v3(file, pairs_queue_content_offset)
         else:
-            signer_queue_length = parse_not_sign_block_value_length(file, pairs_queue_content_offset)
+            signer_queue_length = _parse_not_sign_block_value_length(file, pairs_queue_content_offset)
 
         if not sig_id == ApkSignBlockV2ID:
             file.seek(pairs_queue_content_offset + 4)
@@ -98,7 +98,7 @@ def parse_sign_block_pairs(file, sign_block_offset):
         pair_count = pair_count + 1
 
 
-def parse_not_sign_block_value_length(file, not_sign_block_v2_offset):
+def _parse_not_sign_block_value_length(file, not_sign_block_v2_offset):
     print('no sign block v2 offset: %d' % not_sign_block_v2_offset)
     file.seek(not_sign_block_v2_offset)
 
@@ -109,11 +109,11 @@ def parse_not_sign_block_value_length(file, not_sign_block_v2_offset):
 
 
 # todo: parse v2 structure.
-def parse_sign_block_v3(file, sign_block_v2_offset):
+def _parse_sign_block_v3(file, sign_block_v2_offset):
     raise AssertionError("not implementation.")
 
 
-def parse_sign_block_v2(file, sign_block_v2_offset):
+def _parse_sign_block_v2(file, sign_block_v2_offset):
     """
     [APK Sign V2 Block]:
 
@@ -262,7 +262,7 @@ def parse_sign_block_v2(file, sign_block_v2_offset):
     return signer_queue_length
 
 
-def parse_zip_central_offset(file, file_path):
+def _parse_zip_central_offset(file, file_path):
     """
     struct EndLocator
     {
@@ -293,21 +293,21 @@ def parse_zip_central_offset(file, file_path):
 
 def parse(file_path):
     with open(file_path, 'rb') as f:
-        zip_central_offset, _ = parse_zip_central_offset(f, file_path)
+        zip_central_offset, _ = _parse_zip_central_offset(f, file_path)
         if zip_central_offset == -1:
             raise Exception('parse zip central directory.')
 
         print('zip central offset：%d\n' % zip_central_offset)
 
-        sign_block_offset = parse_apk_sign_block_offset(f, zip_central_offset)
+        sign_block_offset = _parse_apk_sign_block_offset(f, zip_central_offset)
         if sign_block_offset == -1:
             raise Exception('parse apk sign block error.')
 
         print('apk sign block offset：%d\n' % sign_block_offset)
 
-        parse_sign_block_pairs(f, sign_block_offset)
+        _parse_sign_block_pairs(f, sign_block_offset)
 
 
 if __name__ == '__main__':
-    parse('../file/Tools.apk')
+    parse('../../file/Tools.apk')
     print('parse ok.')
