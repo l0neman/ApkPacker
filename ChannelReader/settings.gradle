@@ -1,0 +1,3 @@
+rootProject.name='ChannelReader'
+include ':app'
+include ':lib'
