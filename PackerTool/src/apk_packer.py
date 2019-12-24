@@ -1,6 +1,8 @@
 import datetime
 import os
+import sys
 
+sys.path.append(os.path.abspath('..'))
 from src.apk_sign_block import apk_sign_block_writer
 from src.utils import file_util, debug_log
 
