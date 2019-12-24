@@ -7,7 +7,7 @@ import android.content.Context;
  */
 public final class ChannelReader {
 
-  static final int CHANNEL_ID = 0xcccc;
+  private static final int CHANNEL_ID = 0xcccc;
   private ApkSignBlockReader mBlockReader = new ApkSignBlockReader();
 
   private static ChannelReader sInstance = new ChannelReader();

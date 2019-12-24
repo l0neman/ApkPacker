@@ -14,7 +14,7 @@ import java.util.Set;
 /**
  * Created by l0neman on 2019/12/24.
  */
-public final class ApkSignBlockReader {
+final class ApkSignBlockReader {
 
   private static final String TAG = ApkSignBlockReader.class.getSimpleName();
   private static final boolean DEBUG = false;
@@ -132,6 +132,10 @@ public final class ApkSignBlockReader {
 
   private void parseSignBlockPairs(FileChannel fc, int signBlockOffset) throws IOException {
     fc.position(signBlockOffset);
+
+    // int blockSize = BufferUtils.readInt(fc);
+    // move top block size（uint64）type size forward.
+    fc.position(signBlockOffset + 8);
 
     // move top block size（uint64）type size forward.
     int pairsQueueOffset = signBlockOffset + 8;
