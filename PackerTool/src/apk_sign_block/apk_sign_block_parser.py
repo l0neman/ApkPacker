@@ -10,7 +10,8 @@ ApkSignBlockV3ID = 0xf05368c0
 def _parse_apk_sign_block_offset(file, zip_central_offset):
     """
     size of block - uint64
-    length - uint64: [
+    length - uint64: {
+    [
     {
         ID - uint32,
         value - (pair size - 4 bytes): {
@@ -18,6 +19,7 @@ def _parse_apk_sign_block_offset(file, zip_central_offset):
         }
     },
     ]
+    }
     size of block - uint64
     magic: "APK Sig Block 42" - (16 bytes)
     """
@@ -53,7 +55,7 @@ def _parse_sign_block_pairs(file, sign_block_offset):
     block_size = int.from_bytes(block_size_buf, byteorder='little', signed=False)
     print('top sign block size：%d' % block_size)
 
-    # move top block size（uint64）type size forward。
+    # move top block size（uint64）type size forward.
     pairs_queue_offset = sign_block_offset + 8
 
     pairs_queue_length = int.from_bytes(file.read(8), byteorder='little', signed=False)
@@ -109,8 +111,16 @@ def _parse_not_sign_block_value_length(file, not_sign_block_v2_offset):
 
 
 # todo: parse v2 structure.
-def _parse_sign_block_v3(file, sign_block_v2_offset):
-    raise AssertionError("not implementation.")
+def _parse_sign_block_v3(file, sign_block_v3_offset):
+    print('sign block v3 offset: %d' % sign_block_v3_offset)
+    signer_queue_offset = sign_block_v3_offset
+    file.seek(signer_queue_offset)
+
+    signer_queue_length = int.from_bytes(file.read(4), byteorder='little', signed=False)
+    print('signer queue length: %d\n' % signer_queue_length)
+
+    # ignore parse content.
+    return signer_queue_length
 
 
 def _parse_sign_block_v2(file, sign_block_v2_offset):
@@ -295,13 +305,13 @@ def parse(file_path):
     with open(file_path, 'rb') as f:
         zip_central_offset, _ = _parse_zip_central_offset(f, file_path)
         if zip_central_offset == -1:
-            raise Exception('parse zip central directory.')
+            raise Exception('parse zip central directory: not found')
 
         print('zip central offset：%d\n' % zip_central_offset)
 
         sign_block_offset = _parse_apk_sign_block_offset(f, zip_central_offset)
         if sign_block_offset == -1:
-            raise Exception('parse apk sign block error.')
+            raise Exception('parse apk sign block error: not fond block.')
 
         print('apk sign block offset：%d\n' % sign_block_offset)
 
@@ -309,5 +319,5 @@ def parse(file_path):
 
 
 if __name__ == '__main__':
-    parse('../../file/Tools.apk')
+    parse('../../apk/Tools.apk')
     print('parse ok.')

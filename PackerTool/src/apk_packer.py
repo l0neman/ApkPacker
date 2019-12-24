@@ -8,7 +8,7 @@ ChannelFilePath = '../channel/channel.txt'
 OutDirPath = '../out/'
 ApkFileDir = '../apk/'
 
-ChannelKey = 0xcccc
+ChannelId = 0xcccc
 
 
 def get_apk_name(apk_name, channel_name, channel):
@@ -34,14 +34,13 @@ def start_pack_apk(apk_file_path):
             file_util.get_file_name(apk_file_path, has_suffix=False), name,
             channel)
         apk_sign_block_writer.write_id_value_pairs(
-            apk_file_path, OutDirPath + pack_apk_name, [ChannelKey], [channel])
+            apk_file_path, OutDirPath + pack_apk_name, [ChannelId], [channel])
         debug_log.print_step_b____('已写入 [%s]' % pack_apk_name)
 
     read_channel_file_lines(callback)
 
 
-# todo 1. 支持静态配置文件。
-# todo 2. 支持命令行选项执行。
+# todo 支持命令行选项执行？
 
 if __name__ == '__main__':
     print_time()

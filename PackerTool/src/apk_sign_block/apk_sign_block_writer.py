@@ -3,7 +3,6 @@ import struct
 
 EndLocatorMagic = 0x06054b50
 ApkSignBlockMagic = "APK Sig Block 42"
-ApkSignBlockV3ID = 0xf05368c0
 
 DebugLog = False
 
@@ -226,7 +225,7 @@ def write_id_value_pairs(file_path, out_file_path, ids, values):
                 DirectoryOffsetCache, EndLocatorOffsetCache = \
                     _parse_zip_central_offset(f, file_path)
                 if DirectoryOffsetCache == -1:
-                    raise Exception('parse zip central directory.')
+                    raise Exception('parse zip central directory: not found')
 
             _print_log('zip central offset：%d\n' % DirectoryOffsetCache)
 
@@ -236,7 +235,9 @@ def write_id_value_pairs(file_path, out_file_path, ids, values):
                 SignBlockOffsetCache = _parse_apk_sign_block_offset(
                     f, DirectoryOffsetCache)
                 if SignBlockOffsetCache == -1:
-                    raise Exception('parse apk sign block error.')
+                    out.close()
+                    os.remove(out_file_path)
+                    raise Exception('parse apk sign block error: not fond block.')
 
             ApkFilePathCache = file_path
 
@@ -262,7 +263,7 @@ def write_id_value_pairs(file_path, out_file_path, ids, values):
 
 # test.
 if __name__ == '__main__':
-    write_id_value_pairs('../../apk/Tools.apk', '../apk/ToolsNew.apk',
+    write_id_value_pairs('../../apk/Tools.apk', '../../out/ToolsNew.apk',
                          [0xaaaa, 0x1234],
                          ['I am fine.', 'you are beautiful.'])
     _print_log('write ok.')
