@@ -111,7 +111,6 @@ def _parse_apk_sign_block_offset(file, zip_central_offset):
     return -1
 
 
-# fixme: write structure error.
 def _write_id_value_pair_internal(file, out_file, ids, values,
                                   sign_block_offset):
     file.seek(sign_block_offset)
@@ -121,9 +120,40 @@ def _write_id_value_pair_internal(file, out_file, ids, values,
     _print_log('top sign block size：%d' % block_size)
 
     # not include 16 (two block size) and 16 (magic) type size.
-    original_pairs_size = block_size - 8 - 16
+    # original_pairs_size = block_size - 8 - 16
+
+    # calculator original pairs length.
+    # move [top block size] forward.
+    pairs_offset = sign_block_offset + 8
+    # not include 16 [two block size] and 16 [magic] type size.
+    pairs_limit = pairs_offset + block_size - 8 - 16
+    original_pairs_size = 0
+
+    while pairs_offset < pairs_limit:
+        file.seek(pairs_offset)
+        pair_length = int.from_bytes(file.read(8), byteorder='little',
+                                     signed=False)
+        # move [pair length] type size forward.
+        pairs_offset = pairs_offset + 8
+
+        pair_id = int.from_bytes(file.read(4), byteorder='little',
+                                 signed=False)
+        _print_log('pair ID：0x%x' % pair_id)
+
+        if pair_id == ApkSignBlockPaddingID:
+            break
+
+        # add [pair length] type size.
+        original_pairs_size = original_pairs_size + pair_length + 8
+
+        # jump to next pair.
+        pairs_offset = pairs_offset + pair_length
 
     _print_log('original pairs length: %d' % original_pairs_size)
+
+    # reset file position.
+    pairs_offset = sign_block_offset + 8
+    file.seek(pairs_offset)
 
     append_pairs_length = _calculation_add_pairs_length(values)
     new_block_size = original_pairs_size + append_pairs_length + 8 + 16
@@ -162,7 +192,7 @@ def _write_id_value_pair_internal(file, out_file, ids, values,
         _write_bytes_to_file(bytes(values[i], encoding='utf8'), out_file)
 
     # 3. write padding pair
-    _write_bytes_to_file(int(padding - 4).to_bytes(
+    _write_bytes_to_file(int(padding - 12 + 4).to_bytes(
         8, byteorder='little', signed=False), out_file)
     _write_bytes_to_file(int(ApkSignBlockPaddingID).to_bytes(
         4, byteorder='little', signed=False), out_file)
@@ -269,6 +299,6 @@ if __name__ == '__main__':
     # write_id_value_pairs('../../apk/htb.apk', '../../out/htb.apk',
     #                      [0xaaaa, 0x1234],
     #                      ['I am fine.', 'you are beautiful.'])
-    write_id_value_pairs('../../apk/htb.apk', '../../out/htb.apk', [0x71cccccc],
-                         ['i love you.'])
+    write_id_value_pairs('../../apk/woodbox.apk', '../../out/woodbox.apk',
+                         [0x71cccccc], ['i love you.'])
     _print_log('write ok.')

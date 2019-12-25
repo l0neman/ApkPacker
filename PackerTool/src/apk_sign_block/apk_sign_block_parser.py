@@ -12,16 +12,16 @@ PageAlignmentBytes = 4096
 def _parse_apk_sign_block_offset(file, zip_central_offset):
     """
     size of block - uint64
-    length - uint64: {
     [
     {
+        length - uint64: {
         ID - uint32,
         value - (pair size - 4 bytes): {
             [APK Sign V2 Block]
         }
+        }
     },
     ]
-    }
     size of block - uint64
     magic: "APK Sig Block 42" - (16 bytes)
     """
@@ -65,8 +65,6 @@ def _parse_sign_block_pairs(file, sign_block_offset):
     pairs_queue_limit = pairs_queue_offset + block_size - 8 - 16
     pair_count = 0
 
-    # Fixme: parse structure error.
-
     print("\n====== APK Block Pairs ======")
 
     # parse ID-value pairs.
@@ -98,7 +96,8 @@ def _parse_sign_block_pairs(file, sign_block_offset):
         else:
             pass  # ignore parse.
 
-        if not pair_id == ApkSignBlockV2ID:
+        if not pair_id == ApkSignBlockV2ID and \
+                not pair_id == ApkSignBlockPaddingID:
             print('pair value: %s' % file.read(pair_length - 4).decode(
                 encoding='utf8', errors='ignore'))
 
@@ -118,7 +117,6 @@ def _parse_not_sign_block_value_length(file, not_sign_block_v2_offset):
     return value_length
 
 
-# todo: parse v2 structure.
 def _parse_sign_block_v3(file, sign_block_v3_offset):
     print('sign block v3 offset: %d' % sign_block_v3_offset)
     signer_queue_offset = sign_block_v3_offset
@@ -127,7 +125,6 @@ def _parse_sign_block_v3(file, sign_block_v3_offset):
     signer_queue_length = int.from_bytes(file.read(4), byteorder='little',
                                          signed=False)
     print('signer queue length: %d\n' % signer_queue_length)
-
     # ignore parse content.
 
 
@@ -170,7 +167,8 @@ def _parse_sign_block_v2(file, sign_block_v2_offset):
         length - uint32: {
         signatures: [
             length - uint32: {
-            signature algorithm ID - uint32 [0x0101, 0x0102, 0x0103, 0x0104, 0x0201, 0x0202, 0x0301],
+            signature algorithm ID - uint32 [0x0101, 0x0102, 0x0103, 0x0104,
+                0x0201, 0x0202, 0x0301],
             length - uint32: {
                 signature
             }
@@ -338,5 +336,5 @@ def parse(file_path):
 
 
 if __name__ == '__main__':
-    parse('../../out/htb.apk')
+    parse('../../out/woodbox.apk')
     print('parse ok.')
