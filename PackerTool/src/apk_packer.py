@@ -10,7 +10,7 @@ ChannelFilePath = '../channel/channel.txt'
 OutDirPath = '../out/'
 ApkFileDir = '../apk/'
 
-ChannelId = 0xcccc
+ChannelId = 0x71cccccc
 
 
 def get_apk_name(apk_name, channel_name, channel):

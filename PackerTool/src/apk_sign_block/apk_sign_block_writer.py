@@ -3,8 +3,12 @@ import struct
 
 EndLocatorMagic = 0x06054b50
 ApkSignBlockMagic = "APK Sig Block 42"
+ApkSignBlockV2ID = 0x7109871a
+ApkSignBlockV3ID = 0xf05368c0
+ApkSignBlockPaddingID = 0x42726577
+PageAlignmentBytes = 4096
 
-DebugLog = False
+DebugLog = True
 
 # cache, for speedup.
 ApkFilePathCache = ''
@@ -18,13 +22,13 @@ def _print_log(log):
         print(log)
 
 
-def _calculation_new_pairs_length(values):
+def _calculation_add_pairs_length(values):
     le = len(values)
     length = 0
     for i in range(le):
+        # add pair size.
+        length = length + 8
         # add id size.
-        length = length + 4
-        # add value length size.
         length = length + 4
         # add value size.
         length += len(values[i])
@@ -107,64 +111,62 @@ def _parse_apk_sign_block_offset(file, zip_central_offset):
     return -1
 
 
+# fixme: write structure error.
 def _write_id_value_pair_internal(file, out_file, ids, values,
                                   sign_block_offset):
     file.seek(sign_block_offset)
     block_size_buf = file.read(8)
-
     block_size = int.from_bytes(block_size_buf, byteorder='little',
                                 signed=False)
     _print_log('top sign block size：%d' % block_size)
 
-    append_pairs_length = _calculation_new_pairs_length(values)
+    # not include 16 (two block size) and 16 (magic) type size.
+    original_pairs_size = block_size - 8 - 16
 
-    pairs_queue_length_buf = file.read(8)
+    _print_log('original pairs length: %d' % original_pairs_size)
 
-    pairs_queue_length = int.from_bytes(pairs_queue_length_buf,
-                                        byteorder='little', signed=False)
-    _print_log('id-value pairs queue size：%d' % pairs_queue_length)
+    append_pairs_length = _calculation_add_pairs_length(values)
+    new_block_size = original_pairs_size + append_pairs_length + 8 + 16
 
-    # 8 (pairs queue size) + pairs queue length + append_pairs_length +
-    # 8 (bottom block size) + 16 (magic)
-    # not include top sign block size type.
-    new_block_size = 8 + pairs_queue_length + append_pairs_length + 8 + 16
+    # 8 is top block size.
+    total_size = new_block_size + 8
+    # calculator padding.
+    padding = 0
+    if total_size % PageAlignmentBytes != 0:
+        # pair size + id size.
+        padding = PageAlignmentBytes - (total_size % PageAlignmentBytes)
 
-    _print_log('new sign block size: %d' % new_block_size)
+    new_block_size = new_block_size + padding
+
+    _print_log('new block size: %d' % new_block_size)
     # 1. write top block size to new apk.
     _write_bytes_to_file(
         int(new_block_size).to_bytes(8, byteorder='little', signed=False),
         out_file)
 
-    new_pairs_queue_length = pairs_queue_length + append_pairs_length
-    _print_log('new pairs queue size: %d' % new_pairs_queue_length)
-    # 2. write id-value pairs length to new apk.
-    _write_bytes_to_file(
-        int(new_pairs_queue_length).to_bytes(8, byteorder='little',
-                                             signed=False), out_file)
-
-    # move pairs size (uint64) type size forward.
-    # offset = pairs_offset + 8
-
-    # pair_count = 0
-
     _print_log("\n====== APK Block Pairs ======\n")
 
-    # pairs_queue_limit = pairs_offset + pairs_queue_length
-
-    # 3. write original id-value pairs to new apk
-    _write_bytes_to_file(file.read(pairs_queue_length), out_file)
+    # 2. write original id-value pairs to new apk
+    _write_bytes_to_file(file.read(original_pairs_size), out_file)
 
     # write new id-value paris to new apk.
     for i in range(len(ids)):
+        # 3-2. write pair length (ID size + value size).
+        _write_bytes_to_file(
+            int(4 + len(values[i])).to_bytes(8, byteorder='little',
+                                             signed=False), out_file)
         # 3-1. write id.
         _write_bytes_to_file(
             int(ids[i]).to_bytes(4, byteorder='little', signed=False), out_file)
-        # 3-2. write value length.
-        _write_bytes_to_file(
-            int(len(values[i])).to_bytes(4, byteorder='little', signed=False),
-            out_file)
         # 3-3. write value.
         _write_bytes_to_file(bytes(values[i], encoding='utf8'), out_file)
+
+    # 3. write padding pair
+    _write_bytes_to_file(int(padding - 4).to_bytes(
+        8, byteorder='little', signed=False), out_file)
+    _write_bytes_to_file(int(ApkSignBlockPaddingID).to_bytes(
+        4, byteorder='little', signed=False), out_file)
+    _write_bytes_to_file(bytes(padding - 12), out_file)
 
     # 4. write bottom block size to new apk.
     _write_bytes_to_file(
@@ -237,7 +239,8 @@ def write_id_value_pairs(file_path, out_file_path, ids, values):
                 if SignBlockOffsetCache == -1:
                     out.close()
                     os.remove(out_file_path)
-                    raise Exception('parse apk sign block error: not fond block.')
+                    raise Exception(
+                        'parse apk sign block error: not fond block.')
 
             ApkFilePathCache = file_path
 
@@ -263,7 +266,9 @@ def write_id_value_pairs(file_path, out_file_path, ids, values):
 
 # test.
 if __name__ == '__main__':
-    write_id_value_pairs('../../apk/Tools.apk', '../../out/ToolsNew.apk',
-                         [0xaaaa, 0x1234],
-                         ['I am fine.', 'you are beautiful.'])
+    # write_id_value_pairs('../../apk/htb.apk', '../../out/htb.apk',
+    #                      [0xaaaa, 0x1234],
+    #                      ['I am fine.', 'you are beautiful.'])
+    write_id_value_pairs('../../apk/htb.apk', '../../out/htb.apk', [0x71cccccc],
+                         ['i love you.'])
     _print_log('write ok.')
