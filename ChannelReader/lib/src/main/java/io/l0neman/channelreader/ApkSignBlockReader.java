@@ -23,12 +23,13 @@ final class ApkSignBlockReader {
   private static final int APK_SIGN_BLOCK_V2_ID = 0x7109871a;
   private static final int APK_SIGN_BLOCK_V3_ID = 0xf05368c0;
   private static final String APK_SIGN_BLOCK_MAGIC = "APK Sig Block 42";
+  private static final int APK_SIGN_BLOCK_PADDING_ID = 0x42726577;
 
   /* support custom ids */
-  private static final Set<Integer> CUSTOM_ID_SET = new HashSet<Integer>();
+  private static final Set<Integer> CUSTOM_ID_SET = new HashSet<>();
 
   static {
-    CUSTOM_ID_SET.add(0xcccc);
+    CUSTOM_ID_SET.add(0x71cccccc);
   }
 
   private SparseArray<String> mPairs = new SparseArray<>();
@@ -70,23 +71,6 @@ final class ApkSignBlockReader {
     return -1;
   }
 
-  /*
-    parse [Apk Sign Block] structure ID-value pairs (not include google v2, v3 sign pair).
-
-    size of block - uint64
-    length - uint64: {
-    [
-    {
-        ID - uint32,
-        value - (pair size - 4 bytes): {
-            [APK Sign V2 Block]
-        }
-    },
-    ]
-    }
-    size of block - uint64
-    magic: "APK Sig Block 42" - (16 bytes)
-   */
   private int parseApkSignBlockOffset(FileChannel fc, int zipCentralOffset) throws IOException {
     for (int i = zipCentralOffset - 16; i >= 0; i--) {
       fc.position(i);
@@ -109,69 +93,57 @@ final class ApkSignBlockReader {
     return -1;
   }
 
-  private int parseSignBlockV2V3ValueLength(FileChannel fc, long signBlockV2Offset)
-      throws IOException {
-    fc.position(signBlockV2Offset);
-    return BufferUtils.readInt(fc);
-
-    // ignore parse value.
-  }
-
   /*
-    Channel Block Structure:
-    {
-      Id     - (uint32 channel id - 0xcccc).
-      length - (uint32 channel value length).
-      value  - (chars channel value).
-    }
-   */
-  private int parseNotSignBlockValueLength(FileChannel fc, long notSignBlockV2Offset) throws IOException {
-    fc.position(notSignBlockV2Offset);
-    return BufferUtils.readInt(fc);
-  }
+    parse [Apk Sign Block] structure ID-value pairs (not include google v2, v3 sign pair).
 
+    size of block - uint64
+    [
+        length - uint64: {
+        ID - uint32,
+        value - (pair size - 4 bytes): {
+            [APK Sign V2 Block]
+        }
+        },
+    ]
+    size of block - uint64
+    magic: "APK Sig Block 42" - (16 bytes)
+   */
   private void parseSignBlockPairs(FileChannel fc, int signBlockOffset) throws IOException {
     fc.position(signBlockOffset);
 
-    // int blockSize = BufferUtils.readInt(fc);
-    // move top block size（uint64）type size forward.
-    fc.position(signBlockOffset + 8);
+    final long blockSize = BufferUtils.readLong(fc);
 
     // move top block size（uint64）type size forward.
     int pairsQueueOffset = signBlockOffset + 8;
+    // not include 8 (bottom block size) and 16 (magic) type size.
+    final long pairsQueueLimit = pairsQueueOffset + blockSize - 8 - 16;
 
-    long pairsQueueLength = BufferUtils.readLong(fc);
-    // move pairs size (uint64) type size forward.
-    int pairsQueueContentOffset = pairsQueueOffset + 8;
-    final long pairsQueueContentLimit = pairsQueueContentOffset + pairsQueueLength;
+    while (pairsQueueOffset < pairsQueueLimit) {
+      fc.position(pairsQueueOffset);
 
-    while (pairsQueueContentOffset < pairsQueueContentLimit) {
-      fc.position(pairsQueueContentOffset);
+      long pairLength = BufferUtils.readLong(fc);
+      // move paris size (uint64) type size forward.
+      pairsQueueOffset += 8;
 
-      int id = BufferUtils.readInt(fc);
+      final int id = BufferUtils.readInt(fc);
       // move ID (uint32) type size forward.
-      pairsQueueContentOffset += 4;
-
-      int signerValueLength;
 
       switch (id) {
       case APK_SIGN_BLOCK_V2_ID:
       case APK_SIGN_BLOCK_V3_ID:
-        signerValueLength = parseSignBlockV2V3ValueLength(fc, pairsQueueContentOffset);
+        // ignore parse.
         break;
+      case APK_SIGN_BLOCK_PADDING_ID:
+        return;
       default:
         if (CUSTOM_ID_SET.contains(id)) {
-          fc.position(pairsQueueContentOffset + 4);
-          signerValueLength = parseNotSignBlockValueLength(fc, pairsQueueContentOffset);
-          mPairs.put(id, BufferUtils.readString(fc, signerValueLength));
+          mPairs.put(id, BufferUtils.readString(fc, (int) (pairLength - 4)));
           return;
         }
-
-        throw new AssertionError("unknown block structure, id: " + id);
       }
 
       // jump to next ID-value pair offset, 4 is [APK Sign V2 Block] length.
-      pairsQueueContentOffset += 4 + signerValueLength;
+      pairsQueueOffset += pairLength;
     }
   }
 
@@ -203,7 +175,7 @@ final class ApkSignBlockReader {
     }
   }
 
-  public SparseArray<String> readIdValuePairs(String apkPath) {
+  SparseArray<String> readIdValuePairs(String apkPath) {
     if (mPairs.size() != 0) {
       return mPairs;
     }
