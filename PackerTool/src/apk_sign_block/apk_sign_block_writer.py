@@ -8,7 +8,7 @@ ApkSignBlockV3ID = 0xf05368c0
 ApkSignBlockPaddingID = 0x42726577
 PageAlignmentBytes = 4096
 
-DebugLog = True
+DebugLog = False
 
 # cache, for speedup.
 ApkFilePathCache = ''
@@ -299,6 +299,6 @@ if __name__ == '__main__':
     # write_id_value_pairs('../../apk/htb.apk', '../../out/htb.apk',
     #                      [0xaaaa, 0x1234],
     #                      ['I am fine.', 'you are beautiful.'])
-    write_id_value_pairs('../../apk/woodbox.apk', '../../out/woodbox.apk',
+    write_id_value_pairs('../../apk/htb.apk', '../../out/htb.apk',
                          [0x71cccccc], ['i love you.'])
     _print_log('write ok.')

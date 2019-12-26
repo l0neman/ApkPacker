@@ -336,5 +336,5 @@ def parse(file_path):
 
 
 if __name__ == '__main__':
-    parse('../../out/woodbox.apk')
+    parse('../../out/htb.apk')
     print('parse ok.')
