@@ -44,6 +44,8 @@ def start_pack_apk(apk_file_path):
 
 # todo 支持命令行选项执行？
 
+_version = '1.0.0'
+
 if __name__ == '__main__':
     print_time()
     debug_log.print_step_t____('开始多渠道打包')
