@@ -157,7 +157,7 @@ Apk Siging Block（Apk 签名分块）将被写入 `Central Directory` 的前面
 ## LICENSE
 
 ```
-Copyright 2017 Wangruning
+Copyright 2019 l0neman
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
